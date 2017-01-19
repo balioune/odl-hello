@@ -1,59 +1,9 @@
-## Model a simple HelloWorld GreetingRegistry
+## Create Litener
 
-In this part, we are going to create a container for storing a list of greeting.
-By doing that, all users that call the rpc and the greeting they receive are stored in the date tree 
+In this part, we will create a data change listener that listens on GreetingRegistry tree and write a log in karaf
 
-## Add ib api/src/main/yang/hello.yang
+## create the class GreetingRegistryDataChangeListenerFuture in mpl/src/main/java/org/opendaylight/hello/
 
-        container greeting-registry {
-            list greeting-registry-entry {
-                key "name";
-                leaf name {
-                    type string;
-                }
-                leaf greeting {
-                    type string;
-                }
-            }
-        }
-
-## Rebuild the project from hello/api
-
-         mvn clean install -DskipTests
-
-
-## Make DataBroker available to HelloWorldImp.java
-
-## Create the attribute db
-
-        private DataBroker db;
-    
-## Create a constructor
-
-        public HelloWorldImpl(DataBroker db) {
-            this.db = db;
-            initializeDataTree(this.db);
-        }
-    
-## Create these methods in HelloWordImpl
-
-        private void initializeDataTree(DataBroker db)
-        private void writeToGreetingRegistry(HelloWorldInput input, HelloWorldOutput output)
-        private InstanceIdentifier<GreetingRegistryEntry> toInstanceIdentifier(HelloWorldInput input)
-
-## Modify the method helloWorld
-
-        public Future<RpcResult<HelloWorldOutput>> helloWorld(HelloWorldInput input) {
-            HelloWorldOutput output = new HelloWorldOutputBuilder()
-                    .setGreeting("Hello " + input.getName())
-                   .build();
-            writeToGreetingRegistry(input,output);
-            return RpcResultBuilder.success(output).buildFuture();
-        }
-        
-## Create new class LoggingFuturesCallBack
-
-Content of LoggingFuturesCallBack in package org.opendaylight.hello.impl
 
         /*
          * Copyright © 2015 Alioune, BA. and others.  All rights reserved.
@@ -62,38 +12,102 @@ Content of LoggingFuturesCallBack in package org.opendaylight.hello.impl
          * terms of the Eclipse Public License v1.0 which accompanies this distribution,
          * and is available at http://www.eclipse.org/legal/epl-v10.html
          */
+        
         package org.opendaylight.hello.impl;
         
-        import com.google.common.util.concurrent.FutureCallback;
+        import com.google.common.util.concurrent.AbstractFuture;
         
+        import org.opendaylight.controller.md.sal.binding.api.DataBroker;
+        import org.opendaylight.controller.md.sal.binding.api.DataChangeListener;
+        import org.opendaylight.controller.md.sal.common.api.data.AsyncDataBroker.DataChangeScope;
+        import org.opendaylight.controller.md.sal.common.api.data.AsyncDataChangeEvent;
+        import org.opendaylight.controller.md.sal.common.api.data.LogicalDatastoreType;
+        import org.opendaylight.yang.gen.v1.urn.opendaylight.params.xml.ns.yang.hello.rev150105.GreetingRegistry;
+        import org.opendaylight.yang.gen.v1.urn.opendaylight.params.xml.ns.yang.hello.rev150105.greeting.registry.GreetingRegistryEntry;
+        import org.opendaylight.yang.gen.v1.urn.opendaylight.params.xml.ns.yang.hello.rev150105.greeting.registry.GreetingRegistryEntryKey;
+        import org.opendaylight.yangtools.concepts.ListenerRegistration;
+        import org.opendaylight.yangtools.yang.binding.DataObject;
+        import org.opendaylight.yangtools.yang.binding.InstanceIdentifier;
         import org.slf4j.Logger;
+        import org.slf4j.LoggerFactory;
         
-        public class LoggingFuturesCallBack<V> implements FutureCallback<V> {
+        public class GreetingRegistryDataChangeListenerFuture extends AbstractFuture<GreetingRegistryEntry> implements DataChangeListener, AutoCloseable{
+          
+        private static final Logger LOG = LoggerFactory.getLogger(GreetingRegistryDataChangeListenerFuture.class);
+        private String name;
+        private ListenerRegistration<DataChangeListener> registration;
+            
+        	
+        public GreetingRegistryDataChangeListenerFuture(DataBroker db,String name) {
+                super();
+                this.name = name;
+                InstanceIdentifier<GreetingRegistryEntry> iid =
+                        InstanceIdentifier.create(GreetingRegistry.class)
+                            .child(GreetingRegistryEntry.class);
+                this.registration = db.registerDataChangeListener(LogicalDatastoreType.OPERATIONAL,
+                        iid, this, DataChangeScope.BASE);
+        }
         
-            private Logger LOG;
-            private String message;
-        
-            public LoggingFuturesCallBack(String message,Logger LOG) {
-                this.message = message;
-                this.LOG = LOG;
+        @Override
+        public void close() throws Exception {
+            if(registration != null) {
+              registration.close();
             }
+        }
         
-            @Override
-            public void onFailure(Throwable e) {
-                LOG.warn(message,e);
-        
+        @Override
+        public void onDataChanged(AsyncDataChangeEvent<InstanceIdentifier<?>, DataObject> event) {
+
+		InstanceIdentifier<GreetingRegistryEntry> iid =
+                InstanceIdentifier.create(GreetingRegistry.class)
+                .child(GreetingRegistryEntry.class,new GreetingRegistryEntryKey(this.name));
+
+        if(event.getCreatedData().containsKey(iid) ) {
+            if(event.getCreatedData().get(iid) instanceof GreetingRegistryEntry) {
+                this.set((GreetingRegistryEntry) event.getCreatedData().get(iid));
+                LOG.info("GreetingRegistry tree has been changed");
+                LOG.info("New entry {} ", event.toString());
             }
-        
-            @Override
-            public void onSuccess(V arg0) {
-                LOG.info("Success! {} ", arg0);
-        
+            quietClose();
+        } else if (event.getUpdatedData().containsKey(iid)) {
+            if(event.getUpdatedData().get(iid) instanceof GreetingRegistryEntry) {
+                this.set((GreetingRegistryEntry) event.getUpdatedData().get(iid));
+                LOG.info("GreetingRegistry tree has been changed");
+                LOG.info("New entry {} ", event.toString());
             }
+            quietClose();
+        }
+		
+        }
         
+        private void quietClose() {
+            try {
+                this.close();
+            } catch (Exception e) {
+                throw new IllegalStateException("Unable to close registration",e);
+            }
+        }
+        }
+ 
+
+Modify HelloProvider
+- Add new attributes
+
+        private ListenerRegistration<DataChangeListener> listener;
+        private InstanceIdentifier<GreetingRegistryEntry> iid =
+        InstanceIdentifier.create(GreetingRegistry.class)
+                .child(GreetingRegistryEntry.class);
+        public void onSessionInitiated(ProviderContext session) {
+            	
+             /** Get DataBroker and Notification services**/
+             DataBroker db = session.getSALService(DataBroker.class);
+             NotificationService notificationService = session.getSALService(NotificationService.class);
+        
+             helloService = session.addRpcImplementation(HelloService.class, new HelloWorldImpl(db));
+           
+             /** we should set a name for testing **/
+             listener = db.registerDataChangeListener(LogicalDatastoreType.OPERATIONAL, 
+                    iid, new GreetingRegistryDataChangeListenerFuture(db, "alioune"), DataChangeScope.SUBTREE);
+             LOG.info("HelloProvider Session Initiated");
         }
 
-## Alter the HelloProvider.java to pass the DataBroker to the HelloWorldImpl(...) contstructor: 
-
-        DataBroker db = session.getSALService(DataBroker.class);
-        helloService = session.addRpcImplementation(HelloService.class, new HelloWorldImpl(db));
-        
