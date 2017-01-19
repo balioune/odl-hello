@@ -1,38 +1,113 @@
-### Prerequisite
-You need the followings in order to compile and test this project:
-- Java 8
-- Maven 3
+### Create hello RPC the will return 'hello + $username'
 
-### Create the hello project:
+$username is the input given by internal ODL Apps (features) or users that invoque the RPC
 
-         mvn archetype:generate -DarchetypeGroupId=org.opendaylight.controller \
-         -DarchetypeArtifactId=opendaylight-startup-archetype \
-         -DarchetypeVersion=1.1.2-Beryllium-SR2 \
-         -DarchetypeRepository=http://nexus.opendaylight.org/content/repositories/opendaylight.release/ \
-         -DarchetypeCatalog=https://nexus.opendaylight.org/content/repositories/opendaylight.release/archetype-catalog.xml
+### Model a simple HelloWorld RPC
 
-## And responding to the prompts as follows:
+        module hello {
+            yang-version 1;
+            namespace "urn:opendaylight:params:xml:ns:yang:hello";
+            prefix "hello";
+        
+            revision "2015-01-05" {
+                description "Initial revision of hello model";
+            }
+            
+            rpc hello-world {
+                input {
+                  leaf name {
+                    type string;
+                  }
+                }
+                
+                output {
+                  leaf greeting {
+                    type string;
+                  }
+                }
+            }
+        }
 
-        Define value for property 'groupId': : org.opendaylight.hello
-        Define value for property 'artifactId': : hello
-        Define value for property 'package':  org.opendaylight.hello: : 
-        Define value for property 'classPrefix':  Hello: : 
-        Define value for property 'copyright': : Alioune, BA.
 
-## Build the project
-
-        cd hello/
+## Compile the yang model 
+        cd hello/api
 
         mvn clean install -DskipTests
+### Create new class HelloWordImpl
 
-## Running the project
-        cd karaf/target/assembly/bin
-        ./karaf
+        vim impl/src/main/java/org/opendaylight/hello/impl/HelloWordImpl.java
 
-- Verifying
+Here is the content of the new Class
 
-At the karaf prompt type and wait to see a message :
 
-        log:tail
+        /*
+         * Copyright © 2015 Alioune, BA. and others.  All rights reserved.
+         *
+         * This program and the accompanying materials are made available under the
+         * terms of the Eclipse Public License v1.0 which accompanies this distribution,
+         * and is available at http://www.eclipse.org/legal/epl-v10.html
+         */
+        package org.opendaylight.hello.impl;
+        
+        import java.util.concurrent.Future;
+        
+        import org.opendaylight.yang.gen.v1.urn.opendaylight.params.xml.ns.yang.hello.rev150105.HelloService;
+        import org.opendaylight.yang.gen.v1.urn.opendaylight.params.xml.ns.yang.hello.rev150105.HelloWorldInput;
+        import org.opendaylight.yang.gen.v1.urn.opendaylight.params.xml.ns.yang.hello.rev150105.HelloWorldOutput;
+        import org.opendaylight.yang.gen.v1.urn.opendaylight.params.xml.ns.yang.hello.rev150105.HelloWorldOutputBuilder;
+        import org.opendaylight.yangtools.yang.common.RpcResult;
+        import org.opendaylight.yangtools.yang.common.RpcResultBuilder;
+        
+        public class HelloWorldImpl implements HelloService{
+        
+                @Override
+                public Future<RpcResult<HelloWorldOutput>> helloWorld(HelloWorldInput input) {
+		HelloWorldOutput output = new HelloWorldOutputBuilder()
+                .setGreeting("Hello " + input.getName())
+                .build();
+		return RpcResultBuilder.success(output).buildFuture();
+                }
+        
+        }
 
-The entry point of the project is the class HelloProvider. Feel free to modify it and verify the output on logs
+Modify the class HelloProvider in hello/impl/src/main/java/org/opendaylight/hello/impl/
+
+Add the attributes: private RpcRegistration<HelloService> helloService
+
+Instancite in helloService = session.addRpcImplementation(HelloService.class, new HelloWorldImpl());
+
+Content of HelloProvider after theses modifications
+
+        /*
+         * Copyright © 2015 Alioune, BA. and others.  All rights reserved.
+         *
+         * This program and the accompanying materials are made available under the
+         * terms of the Eclipse Public License v1.0 which accompanies this distribution,
+         * and is available at http://www.eclipse.org/legal/epl-v10.html
+         */
+        package org.opendaylight.hello.impl;
+        
+        import org.opendaylight.controller.sal.binding.api.BindingAwareBroker.ProviderContext;
+        import org.opendaylight.controller.sal.binding.api.BindingAwareBroker.RpcRegistration;
+        import org.opendaylight.controller.sal.binding.api.BindingAwareProvider;
+        import org.opendaylight.yang.gen.v1.urn.opendaylight.params.xml.ns.yang.hello.rev150105.HelloService;
+        import org.slf4j.Logger;
+        import org.slf4j.LoggerFactory;
+        
+        public class HelloProvider implements BindingAwareProvider, AutoCloseable {
+        
+            private static final Logger LOG = LoggerFactory.getLogger(HelloProvider.class);
+            private RpcRegistration<HelloService> helloService;
+            @Override
+            public void onSessionInitiated(ProviderContext session) {
+                helloService = session.addRpcImplementation(HelloService.class, new HelloWorldImpl());
+                LOG.info("HelloProvider Session Initiated");
+            }
+        
+            @Override
+            public void close() throws Exception {
+                LOG.info("HelloProvider Closed");
+            }
+        
+        }
+
