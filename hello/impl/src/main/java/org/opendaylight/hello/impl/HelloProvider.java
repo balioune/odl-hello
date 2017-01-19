@@ -7,6 +7,7 @@
  */
 package org.opendaylight.hello.impl;
 
+import org.opendaylight.controller.md.sal.binding.api.DataBroker;
 import org.opendaylight.controller.sal.binding.api.BindingAwareBroker.ProviderContext;
 import org.opendaylight.controller.sal.binding.api.BindingAwareBroker.RpcRegistration;
 import org.opendaylight.controller.sal.binding.api.BindingAwareProvider;
@@ -20,7 +21,8 @@ public class HelloProvider implements BindingAwareProvider, AutoCloseable {
     private RpcRegistration<HelloService> helloService;
     @Override
     public void onSessionInitiated(ProviderContext session) {
-    	helloService = session.addRpcImplementation(HelloService.class, new HelloWorldImpl());
+       	DataBroker db = session.getSALService(DataBroker.class);
+       	helloService = session.addRpcImplementation(HelloService.class, new HelloWorldImpl(db));
         LOG.info("HelloProvider Session Initiated");
     }
 

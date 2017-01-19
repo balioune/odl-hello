@@ -1,113 +1,59 @@
-### Create hello RPC the will return 'hello + $username'
+## Model a simple HelloWorld GreetingRegistry
 
-$username is the input given by internal ODL Apps (features) or users that invoque the RPC
+In this part, we are going to create a container for storing a list of greeting.
+By doing that, all users that call the rpc and the greeting they receive are stored in the date tree 
 
-### Model a simple HelloWorld RPC
+## Add ib api/src/main/yang/hello.yang
 
-        module hello {
-            yang-version 1;
-            namespace "urn:opendaylight:params:xml:ns:yang:hello";
-            prefix "hello";
-        
-            revision "2015-01-05" {
-                description "Initial revision of hello model";
-            }
-            
-            rpc hello-world {
-                input {
-                  leaf name {
+        container greeting-registry {
+            list greeting-registry-entry {
+                key "name";
+                leaf name {
                     type string;
-                  }
                 }
-                
-                output {
-                  leaf greeting {
+                leaf greeting {
                     type string;
-                  }
                 }
             }
         }
 
+## Rebuild the project from hello/api
 
-## Compile the yang model 
-        cd hello/api
-
-        mvn clean install -DskipTests
-### Create new class HelloWordImpl
-
-        vim impl/src/main/java/org/opendaylight/hello/impl/HelloWordImpl.java
-
-Here is the content of the new Class
+         mvn clean install -DskipTests
 
 
-        /*
-         * Copyright © 2015 Alioune, BA. and others.  All rights reserved.
-         *
-         * This program and the accompanying materials are made available under the
-         * terms of the Eclipse Public License v1.0 which accompanies this distribution,
-         * and is available at http://www.eclipse.org/legal/epl-v10.html
-         */
-        package org.opendaylight.hello.impl;
-        
-        import java.util.concurrent.Future;
-        
-        import org.opendaylight.yang.gen.v1.urn.opendaylight.params.xml.ns.yang.hello.rev150105.HelloService;
-        import org.opendaylight.yang.gen.v1.urn.opendaylight.params.xml.ns.yang.hello.rev150105.HelloWorldInput;
-        import org.opendaylight.yang.gen.v1.urn.opendaylight.params.xml.ns.yang.hello.rev150105.HelloWorldOutput;
-        import org.opendaylight.yang.gen.v1.urn.opendaylight.params.xml.ns.yang.hello.rev150105.HelloWorldOutputBuilder;
-        import org.opendaylight.yangtools.yang.common.RpcResult;
-        import org.opendaylight.yangtools.yang.common.RpcResultBuilder;
-        
-        public class HelloWorldImpl implements HelloService{
-        
-                @Override
-                public Future<RpcResult<HelloWorldOutput>> helloWorld(HelloWorldInput input) {
-		HelloWorldOutput output = new HelloWorldOutputBuilder()
-                .setGreeting("Hello " + input.getName())
-                .build();
-		return RpcResultBuilder.success(output).buildFuture();
-                }
-        
+## Make DataBroker available to HelloWorldImp.java
+
+## Create the attribute db
+
+        private DataBroker db;
+    
+## Create a constructor
+
+        public HelloWorldImpl(DataBroker db) {
+            this.db = db;
+            initializeDataTree(this.db);
         }
+    
+## Create these methods in HelloWordImpl
 
-Modify the class HelloProvider in hello/impl/src/main/java/org/opendaylight/hello/impl/
+        private void initializeDataTree(DataBroker db)
+        private void writeToGreetingRegistry(HelloWorldInput input, HelloWorldOutput output)
+        private InstanceIdentifier<GreetingRegistryEntry> toInstanceIdentifier(HelloWorldInput input)
 
-Add the attributes: private RpcRegistration<HelloService> helloService
+## Modify the method helloWorld
 
-Instancite in helloService = session.addRpcImplementation(HelloService.class, new HelloWorldImpl());
-
-Content of HelloProvider after theses modifications
-
-        /*
-         * Copyright © 2015 Alioune, BA. and others.  All rights reserved.
-         *
-         * This program and the accompanying materials are made available under the
-         * terms of the Eclipse Public License v1.0 which accompanies this distribution,
-         * and is available at http://www.eclipse.org/legal/epl-v10.html
-         */
-        package org.opendaylight.hello.impl;
-        
-        import org.opendaylight.controller.sal.binding.api.BindingAwareBroker.ProviderContext;
-        import org.opendaylight.controller.sal.binding.api.BindingAwareBroker.RpcRegistration;
-        import org.opendaylight.controller.sal.binding.api.BindingAwareProvider;
-        import org.opendaylight.yang.gen.v1.urn.opendaylight.params.xml.ns.yang.hello.rev150105.HelloService;
-        import org.slf4j.Logger;
-        import org.slf4j.LoggerFactory;
-        
-        public class HelloProvider implements BindingAwareProvider, AutoCloseable {
-        
-            private static final Logger LOG = LoggerFactory.getLogger(HelloProvider.class);
-            private RpcRegistration<HelloService> helloService;
-            @Override
-            public void onSessionInitiated(ProviderContext session) {
-                helloService = session.addRpcImplementation(HelloService.class, new HelloWorldImpl());
-                LOG.info("HelloProvider Session Initiated");
-            }
-        
-            @Override
-            public void close() throws Exception {
-                LOG.info("HelloProvider Closed");
-            }
-        
+        public Future<RpcResult<HelloWorldOutput>> helloWorld(HelloWorldInput input) {
+            HelloWorldOutput output = new HelloWorldOutputBuilder()
+                    .setGreeting("Hello " + input.getName())
+                   .build();
+            writeToGreetingRegistry(input,output);
+            return RpcResultBuilder.success(output).buildFuture();
         }
+        
 
+## Alter the HelloProvider.java to pass the DataBroker to the HelloWorldImpl(...) contstructor: 
+
+        DataBroker db = session.getSALService(DataBroker.class);
+        helloService = session.addRpcImplementation(HelloService.class, new HelloWorldImpl(db));
+        

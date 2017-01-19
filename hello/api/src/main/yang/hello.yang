@@ -20,4 +20,16 @@ module hello {
           }
         }
     }
+    
+    container greeting-registry {
+        list greeting-registry-entry {
+            key "name";
+            leaf name {
+                type string;
+            }
+            leaf greeting {
+                type string;
+            }
+        }
+    }
 }
